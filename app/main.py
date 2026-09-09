@@ -123,7 +123,7 @@ try:
         user = message.from_user
         
         # ثبت کاربر در دیتابیس
-        from database.database import db
+        from database import db
         from database.models import User
         
         with db.get_session() as session:
@@ -184,7 +184,7 @@ try:
             
             # ======== کیف پول ========
             if data == "wallet":
-                from database.database import db
+                from database import db
                 from database.models import User
                 
                 with db.get_session() as session:
@@ -203,7 +203,7 @@ try:
             
             # ======== موجودی من ========
             if data == "balance":
-                from database.database import db
+                from database import db
                 from database.models import User
                 
                 with db.get_session() as session:
@@ -273,7 +273,7 @@ try:
             
             # ======== پروفایل ========
             if data == "profile":
-                from database.database import db
+                from database import db
                 from database.models import User
                 
                 with db.get_session() as session:
@@ -315,7 +315,7 @@ try:
             
             # ======== تاریخچه تراکنش‌ها ========
             if data == "transactions":
-                from database.database import db
+                from database import db
                 from database.models import User, WalletTransaction
                 
                 with db.get_session() as session:
