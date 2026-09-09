@@ -41,8 +41,8 @@ print(f"✅ ADMIN_IDS: {ADMIN_IDS}")
 
 try:
     from aiogram import Bot, Dispatcher, types
-    from aiogram.filters import Command, F
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from aiogram.filters import Command
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
     from aiogram.enums import ParseMode
     from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
@@ -520,12 +520,12 @@ async def process_amount(message: types.Message, state: FSMContext):
 # دریافت رسید
 # ============================================================
 
-@dp.callback_query(F.data == "send_receipt")
-async def send_receipt_start(callback: CallbackQuery, state: FSMContext):
+@dp.callback_query(lambda c: c.data == "send_receipt")
+async def send_receipt_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("📸 لطفاً تصویر رسید را ارسال کنید:")
     await callback.answer()
 
-@dp.message(WalletState.sending_receipt, F.photo)
+@dp.message(WalletState.sending_receipt, lambda m: m.photo is not None)
 async def process_receipt(message: types.Message, state: FSMContext):
     data = await state.get_data()
     amount = data.get('amount', 0)
@@ -573,8 +573,8 @@ async def process_receipt(message: types.Message, state: FSMContext):
 # تایید و رد پرداخت توسط ادمین
 # ============================================================
 
-@dp.callback_query(F.data.startswith("confirm_"))
-async def confirm_payment(callback: CallbackQuery):
+@dp.callback_query(lambda c: c.data.startswith("confirm_"))
+async def confirm_payment(callback: types.CallbackQuery):
     payment_id = int(callback.data.replace("confirm_", ""))
     
     with get_db() as session:
@@ -629,8 +629,8 @@ async def confirm_payment(callback: CallbackQuery):
         )
         await callback.answer("✅ تایید شد!")
 
-@dp.callback_query(F.data.startswith("reject_"))
-async def reject_payment(callback: CallbackQuery):
+@dp.callback_query(lambda c: c.data.startswith("reject_"))
+async def reject_payment(callback: types.CallbackQuery):
     payment_id = int(callback.data.replace("reject_", ""))
     
     with get_db() as session:
@@ -664,8 +664,8 @@ async def reject_payment(callback: CallbackQuery):
         )
         await callback.answer("❌ رد شد!")
 
-@dp.callback_query(F.data == "cancel_payment")
-async def cancel_payment(callback: CallbackQuery, state: FSMContext):
+@dp.callback_query(lambda c: c.data == "cancel_payment")
+async def cancel_payment(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text("❌ لغو شد.", reply_markup=main_menu())
     await callback.answer()
