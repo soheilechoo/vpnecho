@@ -1,5 +1,3 @@
-# اضافه کردن به مدل‌های موجود
-
 class BankCard(Base):
     __tablename__ = "bank_cards"
     
@@ -14,6 +12,6 @@ class ProductPrice(Base):
     __tablename__ = "product_prices"
     
     id = Column(Integer, primary_key=True, index=True)
-    product_type = Column(String(50), unique=True, nullable=False, index=True)  # vip_single, vip_dual, normal_single, normal_dual
+    product_type = Column(String(50), unique=True, nullable=False, index=True)
     price = Column(Float, nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
