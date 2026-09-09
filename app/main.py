@@ -41,7 +41,7 @@ print(f"✅ ADMIN_IDS: {ADMIN_IDS}")
 
 try:
     from aiogram import Bot, Dispatcher, types
-    from aiogram.filters import Command
+    from aiogram.filters import Command, F
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     from aiogram.enums import ParseMode
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -58,7 +58,7 @@ except Exception as e:
 # ============================================================
 
 try:
-    from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean, BigInteger, Index
+    from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean, BigInteger, Index, Enum
     from sqlalchemy.ext.declarative import declarative_base
     from sqlalchemy.orm import sessionmaker, relationship
     from sqlalchemy.sql import func
