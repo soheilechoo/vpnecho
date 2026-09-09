@@ -4,10 +4,12 @@ from sqlalchemy.sql import func
 from database.database import Base
 import enum
 
+
 class PaymentStatus(enum.Enum):
     PENDING = "pending"
     SUCCESS = "success"
     REJECTED = "rejected"
+
 
 class TransactionType(enum.Enum):
     DEPOSIT = "deposit"
@@ -16,9 +18,10 @@ class TransactionType(enum.Enum):
     ADMIN_CREDIT = "admin_credit"
     ADMIN_DEBIT = "admin_debit"
 
+
 class User(Base):
     __tablename__ = "users"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
     username = Column(String(100), nullable=True)
@@ -30,18 +33,20 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+
     # Relationships
     payments = relationship("Payment", back_populates="user")
     wallet_transactions = relationship("WalletTransaction", back_populates="user")
     purchases = relationship("Purchase", back_populates="user")
-    
+    orders = relationship("Order", back_populates="user")
+
     def __repr__(self):
         return f"<User {self.telegram_id} ({self.username})>"
 
+
 class Payment(Base):
     __tablename__ = "payments"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     transaction_id = Column(String(50), unique=True, nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -54,18 +59,19 @@ class Payment(Base):
     rejected_at = Column(DateTime(timezone=True), nullable=True)
     admin_id = Column(BigInteger, nullable=True)
     rejection_reason = Column(Text, nullable=True)
-    
+
     # Relationships
     user = relationship("User", back_populates="payments")
-    
+
     __table_args__ = (
         Index('ix_payments_user_id_status', 'user_id', 'status'),
         Index('ix_payments_transaction_id', 'transaction_id'),
     )
 
+
 class WalletTransaction(Base):
     __tablename__ = "wallet_transactions"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     type = Column(Enum(TransactionType), nullable=False)
@@ -76,17 +82,18 @@ class WalletTransaction(Base):
     status = Column(String(20), default="success")
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     # Relationships
     user = relationship("User", back_populates="wallet_transactions")
-    
+
     __table_args__ = (
         Index('ix_wallet_transactions_user_id_type', 'user_id', 'type'),
     )
 
+
 class Purchase(Base):
     __tablename__ = "purchases"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     transaction_id = Column(String(50), unique=True, nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -95,14 +102,15 @@ class Purchase(Base):
     amount = Column(Float, nullable=False)
     status = Column(String(20), default="success")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     # Relationships
     user = relationship("User", back_populates="purchases")
     product = relationship("Product")
 
+
 class Product(Base):
     __tablename__ = "products"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     product_type = Column(String(50), unique=True, nullable=False)
@@ -111,9 +119,10 @@ class Product(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+
 class BankCard(Base):
     __tablename__ = "bank_cards"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     card_number = Column(String(16), unique=True, nullable=False, index=True)
     card_holder_name = Column(String(100), nullable=False)
@@ -121,10 +130,39 @@ class BankCard(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+
 class ProductPrice(Base):
     __tablename__ = "product_prices"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     product_type = Column(String(50), unique=True, nullable=False, index=True)
     price = Column(Float, nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class Order(Base):
+    __tablename__ = "orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    order_number = Column(String(20), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    product_name = Column(String(100), nullable=False)
+    price = Column(Float, nullable=False)
+    status = Column(String(20), default="pending")  # pending, delivered, cancelled, refunded
+    admin_note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    user = relationship("User", back_populates="orders")
+    product = relationship("Product")
+
+    __table_args__ = (
+        Index('ix_orders_user_id_status', 'user_id', 'status'),
+        Index('ix_orders_order_number', 'order_number'),
+    )
+
+    def __repr__(self):
+        return f"<Order {self.order_number}: {self.status}>"
