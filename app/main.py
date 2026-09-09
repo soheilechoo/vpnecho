@@ -29,14 +29,13 @@ try:
     from aiogram import Bot, Dispatcher, types
     from aiogram.filters import Command
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    from aiogram.client.default import DefaultBotProperties
     from aiogram.enums import ParseMode
     print("✅ aiogram imported")
     
-    # ایجاد ربات
+    # ایجاد ربات - نسخه اصلاح شده
     bot = Bot(
         token=TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+        parse_mode=ParseMode.HTML
     )
     dp = Dispatcher()
     print("✅ Bot and Dispatcher created")
