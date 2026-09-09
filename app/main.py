@@ -29,6 +29,7 @@ try:
     print("✅ BOT_TOKEN found")
     
     # ============ ایمپورت‌های اصلی ============
+    print("⏳ Importing aiogram...")
     from aiogram import Bot, Dispatcher, types
     from aiogram.filters import Command
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -37,14 +38,13 @@ try:
     from aiogram.fsm.context import FSMContext
     from aiogram.fsm.state import State, StatesGroup
     from aiogram.exceptions import TelegramBadRequest
-    
     print("✅ aiogram imported")
     
     # ============ ایمپورت هندلرها ============
+    print("⏳ Importing handlers...")
     from handlers.admin_panel import router as admin_router
     from handlers.payment_handler import register_payment_handlers
     from handlers.purchase_handler import register_purchase_handlers
-    
     print("✅ Handlers imported")
     
     # ============ تعریف State‌ها ============
@@ -99,58 +99,10 @@ try:
             [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="main_menu")]
         ])
     
-    def get_back_to_wallet_keyboard():
-        """کیبورد بازگشت به کیف پول"""
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="↩️ بازگشت", callback_data="back_to_wallet")]
-        ])
-    
-    def get_receipt_keyboard():
-        """کیبورد ارسال رسید"""
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📸 پرداخت کردم / ارسال رسید", callback_data="send_receipt")],
-            [InlineKeyboardButton(text="↩️ انصراف", callback_data="cancel_payment")]
-        ])
-    
-    def get_cancel_keyboard():
-        """کیبورد لغو"""
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ انصراف", callback_data="cancel_payment")]
-        ])
-    
     def get_back_keyboard():
         """کیبورد بازگشت"""
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="↩️ بازگشت", callback_data="main_menu")]
-        ])
-    
-    def get_admin_keyboard():
-        """کیبورد پنل ادمین"""
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="📊 آمار", callback_data="admin_stats"),
-                InlineKeyboardButton(text="👥 کاربران", callback_data="admin_users")
-            ],
-            [
-                InlineKeyboardButton(text="🛒 سفارش‌ها", callback_data="admin_orders"),
-                InlineKeyboardButton(text="💰 کیف پول‌ها", callback_data="admin_wallets")
-            ],
-            [
-                InlineKeyboardButton(text="💳 پرداخت‌ها", callback_data="admin_payments"),
-                InlineKeyboardButton(text="🎓 آموزش‌ها", callback_data="admin_tutorials")
-            ],
-            [
-                InlineKeyboardButton(text="💵 مدیریت قیمت‌ها", callback_data="admin_prices"),
-                InlineKeyboardButton(text="💳 مدیریت شماره کارت", callback_data="admin_cards")
-            ],
-            [
-                InlineKeyboardButton(text="📢 ارسال پیام", callback_data="admin_broadcast"),
-                InlineKeyboardButton(text="🔎 جستجوی کاربر", callback_data="admin_search")
-            ],
-            [
-                InlineKeyboardButton(text="⚙️ تنظیمات", callback_data="admin_settings"),
-                InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="main_menu")
-            ]
         ])
     
     # ============ تابع کمکی برای ویرایش ایمن پیام ============
@@ -196,20 +148,6 @@ try:
             reply_markup=get_main_menu_keyboard()
         )
     
-    @dp.message(Command("help"))
-    async def help_command(message: types.Message):
-        await message.answer(
-            "🤖 **راهنمای ربات**\n\n"
-            "🟣 خرید VPN VIP - خرید اشتراک VIP\n"
-            "🔵 خرید VPN معمولی - خرید اشتراک معمولی\n"
-            "🎓 آموزش - مشاهده آموزش‌ها\n"
-            "💰 موجودی - مدیریت کیف پول\n"
-            "🎧 پشتیبانی - ارتباط با پشتیبانی\n"
-            "👤 پروفایل - مشاهده اطلاعات کاربری",
-            reply_markup=get_back_keyboard(),
-            parse_mode="Markdown"
-        )
-    
     @dp.message(Command("admin"))
     async def admin_panel_command(message: types.Message):
         """ورود به پنل ادمین"""
@@ -219,10 +157,11 @@ try:
             await message.answer("⛔ شما دسترسی به این بخش ندارید.")
             return
         
+        from keyboards.admin_keyboards import get_admin_main_menu
         await message.answer(
             "👋 به پنل مدیریت خوش آمدید!\n\n"
             "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
-            reply_markup=get_admin_keyboard()
+            reply_markup=get_admin_main_menu()
         )
     
     # ============ هندلرهای دکمه‌ها ============
@@ -243,47 +182,8 @@ try:
                 await callback.answer()
                 return
             
-            # ======== خرید VPN VIP ========
-            if data == "buy_vip":
-                await safe_edit_text(
-                    callback.message,
-                    "🟣 **خرید VPN VIP**\n\nلطفاً نوع کاربری مورد نظر خود را انتخاب کنید:",
-                    InlineKeyboardMarkup(inline_keyboard=[
-                        [
-                            InlineKeyboardButton(text="👤 تک کاربره", callback_data="buy_vip_single"),
-                            InlineKeyboardButton(text="👥 دو کاربره", callback_data="buy_vip_dual")
-                        ],
-                        [InlineKeyboardButton(text="↩️ بازگشت", callback_data="main_menu")]
-                    ])
-                )
-                await callback.answer()
-                return
-            
-            # ======== خرید VPN معمولی ========
-            if data == "buy_normal":
-                await safe_edit_text(
-                    callback.message,
-                    "🔵 **خرید VPN معمولی**\n\nلطفاً نوع کاربری مورد نظر خود را انتخاب کنید:",
-                    InlineKeyboardMarkup(inline_keyboard=[
-                        [
-                            InlineKeyboardButton(text="👤 تک کاربره", callback_data="buy_normal_single"),
-                            InlineKeyboardButton(text="👥 دو کاربره", callback_data="buy_normal_dual")
-                        ],
-                        [InlineKeyboardButton(text="↩️ بازگشت", callback_data="main_menu")]
-                    ])
-                )
-                await callback.answer()
-                return
-            
-            # ======== انتخاب محصول (با پردازش خرید) ========
-            if data.startswith("buy_vip_") or data.startswith("buy_normal_"):
-                # اینجا خرید توسط handler پردازش می‌شود
-                await callback.answer("در حال پردازش...")
-                return
-            
             # ======== کیف پول ========
             if data == "wallet":
-                # دریافت موجودی از دیتابیس
                 from database.database import db
                 from database.models import User
                 
@@ -325,44 +225,36 @@ try:
                 await callback.answer()
                 return
             
-            # ======== تاریخچه تراکنش‌ها ========
-            if data == "transactions":
-                from database.database import db
-                from database.models import User, WalletTransaction
-                
-                with db.get_session() as session:
-                    db_user = session.query(User).filter_by(telegram_id=user.id).first()
-                    if db_user:
-                        transactions = session.query(WalletTransaction).filter_by(user_id=db_user.id).order_by(
-                            WalletTransaction.created_at.desc()
-                        ).limit(10).all()
-                    else:
-                        transactions = []
-                
-                if not transactions:
-                    text = "📜 **تاریخچه تراکنش‌ها**\n\nهیچ تراکنشی یافت نشد."
-                else:
-                    text = "📜 **۱۰ تراکنش اخیر**\n\n"
-                    for t in transactions:
-                        amount_str = f"+{t.amount:,.0f}" if t.amount > 0 else f"{t.amount:,.0f}"
-                        text += f"• {t.created_at.strftime('%Y-%m-%d %H:%M')}\n"
-                        text += f"  {t.type.value}: {amount_str} تومان\n"
-                        text += f"  موجودی: {t.balance_after:,.0f} تومان\n\n"
-                
+            # ======== خرید VPN VIP ========
+            if data == "buy_vip":
                 await safe_edit_text(
                     callback.message,
-                    text,
+                    "🟣 **خرید VPN VIP**\n\nلطفاً نوع کاربری مورد نظر خود را انتخاب کنید:",
                     InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="↩️ بازگشت", callback_data="wallet")]
+                        [
+                            InlineKeyboardButton(text="👤 تک کاربره", callback_data="buy_vip_single"),
+                            InlineKeyboardButton(text="👥 دو کاربره", callback_data="buy_vip_dual")
+                        ],
+                        [InlineKeyboardButton(text="↩️ بازگشت", callback_data="main_menu")]
                     ])
                 )
                 await callback.answer()
                 return
             
-            # ======== افزایش موجودی (با پردازش پرداخت) ========
-            if data == "deposit":
-                # اینجا توسط payment_handler پردازش می‌شود
-                await callback.answer("در حال پردازش...")
+            # ======== خرید VPN معمولی ========
+            if data == "buy_normal":
+                await safe_edit_text(
+                    callback.message,
+                    "🔵 **خرید VPN معمولی**\n\nلطفاً نوع کاربری مورد نظر خود را انتخاب کنید:",
+                    InlineKeyboardMarkup(inline_keyboard=[
+                        [
+                            InlineKeyboardButton(text="👤 تک کاربره", callback_data="buy_normal_single"),
+                            InlineKeyboardButton(text="👥 دو کاربره", callback_data="buy_normal_dual")
+                        ],
+                        [InlineKeyboardButton(text="↩️ بازگشت", callback_data="main_menu")]
+                    ])
+                )
+                await callback.answer()
                 return
             
             # ======== پشتیبانی ========
@@ -421,48 +313,36 @@ try:
                 await callback.answer()
                 return
             
-            # ======== پنل ادمین ========
-            admin_id = int(os.getenv('ADMIN_IDS', '0'))
-            
-            if data.startswith("admin_") or data == "back_to_admin":
-                if user.id != admin_id:
-                    await callback.answer("⛔ شما دسترسی به این بخش ندارید.", show_alert=True)
-                    return
-                
-                if data == "back_to_admin":
-                    await safe_edit_text(
-                        callback.message,
-                        "👋 به پنل مدیریت خوش آمدید!\n\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
-                        get_admin_keyboard()
-                    )
-                else:
-                    # اینجا توسط admin_handler پردازش می‌شود
-                    await callback.answer("در حال پردازش...")
-                await callback.answer()
-                return
-            
-            # ======== پرداخت ========
-            if data.startswith("confirm_payment_") or data.startswith("reject_payment_"):
-                # اینجا توسط payment_handler پردازش می‌شود
-                await callback.answer("در حال پردازش...")
-                return
-            
-            # ======== بازگشت به کیف پول ========
-            if data == "back_to_wallet":
-                await state.clear()
+            # ======== تاریخچه تراکنش‌ها ========
+            if data == "transactions":
                 from database.database import db
-                from database.models import User
+                from database.models import User, WalletTransaction
                 
                 with db.get_session() as session:
                     db_user = session.query(User).filter_by(telegram_id=user.id).first()
-                    balance = db_user.balance if db_user else 0
+                    if db_user:
+                        transactions = session.query(WalletTransaction).filter_by(user_id=db_user.id).order_by(
+                            WalletTransaction.created_at.desc()
+                        ).limit(10).all()
+                    else:
+                        transactions = []
+                
+                if not transactions:
+                    text = "📜 **تاریخچه تراکنش‌ها**\n\nهیچ تراکنشی یافت نشد."
+                else:
+                    text = "📜 **۱۰ تراکنش اخیر**\n\n"
+                    for t in transactions:
+                        amount_str = f"+{t.amount:,.0f}" if t.amount > 0 else f"{t.amount:,.0f}"
+                        text += f"• {t.created_at.strftime('%Y-%m-%d %H:%M')}\n"
+                        text += f"  {t.type.value}: {amount_str} تومان\n"
+                        text += f"  موجودی: {t.balance_after:,.0f} تومان\n\n"
                 
                 await safe_edit_text(
                     callback.message,
-                    f"💰 **مدیریت کیف پول**\n\n"
-                    f"💳 موجودی فعلی: **{balance:,.0f}** تومان\n\n"
-                    f"لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
-                    get_wallet_keyboard()
+                    text,
+                    InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="↩️ بازگشت", callback_data="wallet")]
+                    ])
                 )
                 await callback.answer()
                 return
@@ -472,6 +352,7 @@ try:
             
         except Exception as e:
             print(f"❌ خطا در handle_callback: {e}")
+            traceback.print_exc()
             await callback.answer("خطایی رخ داد، لطفاً دوباره تلاش کنید.")
     
     # ============ اجرای ربات ============
