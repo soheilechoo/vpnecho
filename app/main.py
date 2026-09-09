@@ -208,29 +208,41 @@ class WalletState(StatesGroup):
 
 def main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton("🟣 خرید VPN VIP", callback_data="buy_vip"),
-         InlineKeyboardButton("🔵 خرید VPN معمولی", callback_data="buy_normal")],
-        [InlineKeyboardButton("🎓 آموزش", callback_data="tutorials")],
-        [InlineKeyboardButton("💰 موجودی", callback_data="wallet"),
-         InlineKeyboardButton("🎧 پشتیبانی", callback_data="support")],
-        [InlineKeyboardButton("👤 پروفایل", callback_data="profile")]
+        [
+            InlineKeyboardButton(text="🟣 خرید VPN VIP", callback_data="buy_vip"),
+            InlineKeyboardButton(text="🔵 خرید VPN معمولی", callback_data="buy_normal")
+        ],
+        [
+            InlineKeyboardButton(text="🎓 آموزش", callback_data="tutorials")
+        ],
+        [
+            InlineKeyboardButton(text="💰 موجودی", callback_data="wallet"),
+            InlineKeyboardButton(text="🎧 پشتیبانی", callback_data="support")
+        ],
+        [
+            InlineKeyboardButton(text="👤 پروفایل", callback_data="profile")
+        ]
     ])
 
 def wallet_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton("💰 موجودی من", callback_data="balance")],
-        [InlineKeyboardButton("➕ افزایش موجودی", callback_data="deposit")],
-        [InlineKeyboardButton("📜 تاریخچه", callback_data="transactions")],
-        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+        [InlineKeyboardButton(text="💰 موجودی من", callback_data="balance")],
+        [InlineKeyboardButton(text="➕ افزایش موجودی", callback_data="deposit")],
+        [InlineKeyboardButton(text="📜 تاریخچه", callback_data="transactions")],
+        [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="main_menu")]
     ])
 
 def admin_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton("📊 آمار", callback_data="admin_stats"),
-         InlineKeyboardButton("👥 کاربران", callback_data="admin_users")],
-        [InlineKeyboardButton("💵 قیمت‌ها", callback_data="admin_prices"),
-         InlineKeyboardButton("💳 کارت‌ها", callback_data="admin_cards")],
-        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+        [
+            InlineKeyboardButton(text="📊 آمار", callback_data="admin_stats"),
+            InlineKeyboardButton(text="👥 کاربران", callback_data="admin_users")
+        ],
+        [
+            InlineKeyboardButton(text="💵 قیمت‌ها", callback_data="admin_prices"),
+            InlineKeyboardButton(text="💳 کارت‌ها", callback_data="admin_cards")
+        ],
+        [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="main_menu")]
     ])
 
 # ============================================================
@@ -315,9 +327,11 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
             await callback.message.edit_text(
                 f"🛒 خرید VPN {product_type.upper()}\nنوع کاربری را انتخاب کنید:",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton("👤 تک کاربره", callback_data=f"buy_{product_type}_single"),
-                     InlineKeyboardButton("👥 دو کاربره", callback_data=f"buy_{product_type}_dual")],
-                    [InlineKeyboardButton("↩️ بازگشت", callback_data="main_menu")]
+                    [
+                        InlineKeyboardButton(text="👤 تک کاربره", callback_data=f"buy_{product_type}_single"),
+                        InlineKeyboardButton(text="👥 دو کاربره", callback_data=f"buy_{product_type}_dual")
+                    ],
+                    [InlineKeyboardButton(text="↩️ بازگشت", callback_data="main_menu")]
                 ])
             )
             await callback.answer()
@@ -507,8 +521,8 @@ async def process_amount(message: types.Message, state: FSMContext):
             f"👤 صاحب کارت: {card_owner}\n\n"
             f"پس از واریز، عکس رسید را ارسال کنید.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton("📸 ارسال رسید", callback_data="send_receipt")],
-                [InlineKeyboardButton("❌ انصراف", callback_data="cancel_payment")]
+                [InlineKeyboardButton(text="📸 ارسال رسید", callback_data="send_receipt")],
+                [InlineKeyboardButton(text="❌ انصراف", callback_data="cancel_payment")]
             ])
         )
         await state.set_state(WalletState.sending_receipt)
@@ -561,8 +575,10 @@ async def process_receipt(message: types.Message, state: FSMContext):
                     f"💰 {amount:,} تومان\n"
                     f"🆔 {transaction_id}",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton("✅ تایید", callback_data=f"confirm_{payment.id}"),
-                 InlineKeyboardButton("❌ رد", callback_data=f"reject_{payment.id}")]
+                [
+                    InlineKeyboardButton(text="✅ تایید", callback_data=f"confirm_{payment.id}"),
+                    InlineKeyboardButton(text="❌ رد", callback_data=f"reject_{payment.id}")
+                ]
             ])
         )
     
