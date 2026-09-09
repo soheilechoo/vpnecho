@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean, Enum, BigInteger
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean, Enum, BigInteger, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database.database import Base
@@ -109,4 +109,22 @@ class Product(Base):
     price = Column(Float, nullable=False)
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class BankCard(Base):
+    __tablename__ = "bank_cards"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    card_number = Column(String(16), unique=True, nullable=False, index=True)
+    card_holder_name = Column(String(100), nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class ProductPrice(Base):
+    __tablename__ = "product_prices"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    product_type = Column(String(50), unique=True, nullable=False, index=True)
+    price = Column(Float, nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
