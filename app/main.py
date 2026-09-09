@@ -203,7 +203,7 @@ class WalletState(StatesGroup):
     sending_receipt = State()
 
 # ============================================================
-# تابع کمکی برای ویرایش ایمن پیام (با ۲ روش مختلف)
+# تابع کمکی برای ویرایش ایمن پیام
 # ============================================================
 
 async def safe_edit_text(message, text, reply_markup=None, parse_mode="Markdown"):
@@ -213,15 +213,11 @@ async def safe_edit_text(message, text, reply_markup=None, parse_mode="Markdown"
     except TelegramBadRequest as e:
         error_msg = str(e)
         if "message is not modified" in error_msg:
-            # محتوا تکراری است - کاری نکن
             pass
         elif "message to edit not found" in error_msg:
-            # پیام حذف شده - پیام جدید بفرست
             await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
         else:
-            # خطای دیگر - لاگ کن و دوباره تلاش کن
             print(f"❌ Safe edit error: {e}")
-            # روش جایگزین: پیام جدید بفرست
             try:
                 await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
             except:
