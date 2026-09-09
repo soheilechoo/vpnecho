@@ -10,12 +10,15 @@ os.makedirs('data', exist_ok=True)
 print("=" * 50)
 print("🚀 Starting VPN Bot...")
 print("=" * 50)
+sys.stdout.flush()
 
 try:
     # بارگذاری متغیرهای محیطی
+    print("⏳ Loading environment variables...")
     from dotenv import load_dotenv
     load_dotenv()
     print("✅ Environment variables loaded")
+    sys.stdout.flush()
     
     # ============================================
     # ⚠️ توکن را در این قسمت قرار دهید
@@ -27,6 +30,7 @@ try:
         print("💡 Please set BOT_TOKEN in Render Environment Variables")
         sys.exit(1)
     print("✅ BOT_TOKEN found")
+    sys.stdout.flush()
     
     # ============ ایمپورت‌های اصلی ============
     print("⏳ Importing aiogram...")
@@ -39,13 +43,36 @@ try:
     from aiogram.fsm.state import State, StatesGroup
     from aiogram.exceptions import TelegramBadRequest
     print("✅ aiogram imported")
+    sys.stdout.flush()
     
     # ============ ایمپورت هندلرها ============
     print("⏳ Importing handlers...")
-    from handlers.admin_panel import router as admin_router
-    from handlers.payment_handler import register_payment_handlers
-    from handlers.purchase_handler import register_purchase_handlers
-    print("✅ Handlers imported")
+    try:
+        from handlers.admin_panel import router as admin_router
+        print("✅ admin_panel imported")
+    except Exception as e:
+        print(f"❌ Error importing admin_panel: {e}")
+        traceback.print_exc()
+        sys.exit(1)
+    
+    try:
+        from handlers.payment_handler import register_payment_handlers
+        print("✅ payment_handler imported")
+    except Exception as e:
+        print(f"❌ Error importing payment_handler: {e}")
+        traceback.print_exc()
+        sys.exit(1)
+    
+    try:
+        from handlers.purchase_handler import register_purchase_handlers
+        print("✅ purchase_handler imported")
+    except Exception as e:
+        print(f"❌ Error importing purchase_handler: {e}")
+        traceback.print_exc()
+        sys.exit(1)
+    
+    print("✅ All handlers imported")
+    sys.stdout.flush()
     
     # ============ تعریف State‌ها ============
     
@@ -55,6 +82,7 @@ try:
     
     # ============ ایجاد ربات ============
     
+    print("⏳ Creating bot and dispatcher...")
     storage = MemoryStorage()
     bot = Bot(
         token=TOKEN,
@@ -62,12 +90,15 @@ try:
     )
     dp = Dispatcher(storage=storage)
     print("✅ Bot and Dispatcher created")
+    sys.stdout.flush()
     
     # ============ ثبت هندلرها ============
+    print("⏳ Registering handlers...")
     dp.include_router(admin_router)
     register_payment_handlers(dp)
     register_purchase_handlers(dp)
     print("✅ All handlers registered")
+    sys.stdout.flush()
     
     # ============ کیبوردها ============
     
@@ -122,24 +153,26 @@ try:
     async def start_command(message: types.Message):
         user = message.from_user
         
-        # ثبت کاربر در دیتابیس
-        from database import db
-        from database.models import User
-        
-        with db.get_session() as session:
-            existing = session.query(User).filter_by(telegram_id=user.id).first()
-            if not existing:
-                new_user = User(
-                    telegram_id=user.id,
-                    username=user.username,
-                    first_name=user.first_name,
-                    last_name=user.last_name,
-                    balance=0,
-                    successful_transactions=0
-                )
-                session.add(new_user)
-                session.commit()
-                print(f"✅ New user registered: {user.id} ({user.username})")
+        try:
+            from database import db
+            from database.models import User
+            
+            with db.get_session() as session:
+                existing = session.query(User).filter_by(telegram_id=user.id).first()
+                if not existing:
+                    new_user = User(
+                        telegram_id=user.id,
+                        username=user.username,
+                        first_name=user.first_name,
+                        last_name=user.last_name,
+                        balance=0,
+                        successful_transactions=0
+                    )
+                    session.add(new_user)
+                    session.commit()
+                    print(f"✅ New user registered: {user.id} ({user.username})")
+        except Exception as e:
+            print(f"❌ Error registering user: {e}")
         
         await message.answer(
             f"👋 {user.first_name} عزیز به ربات فروش VPN خوش آمدید! 🌟\n\n"
@@ -157,12 +190,16 @@ try:
             await message.answer("⛔ شما دسترسی به این بخش ندارید.")
             return
         
-        from keyboards.admin_keyboards import get_admin_main_menu
-        await message.answer(
-            "👋 به پنل مدیریت خوش آمدید!\n\n"
-            "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
-            reply_markup=get_admin_main_menu()
-        )
+        try:
+            from keyboards.admin_keyboards import get_admin_main_menu
+            await message.answer(
+                "👋 به پنل مدیریت خوش آمدید!\n\n"
+                "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
+                reply_markup=get_admin_main_menu()
+            )
+        except Exception as e:
+            print(f"❌ Error in admin panel: {e}")
+            await message.answer("❌ خطا در باز کردن پنل ادمین.")
     
     # ============ هندلرهای دکمه‌ها ============
     
@@ -362,12 +399,14 @@ try:
         print("✅ Bot is ready!")
         print("🤖 Starting polling...")
         print("=" * 50)
+        sys.stdout.flush()
         await dp.start_polling(bot)
     
     print("=" * 50)
     print("✅ All imports successful!")
     print("🚀 Starting bot...")
     print("=" * 50)
+    sys.stdout.flush()
     
     asyncio.run(main())
     
