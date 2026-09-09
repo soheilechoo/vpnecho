@@ -203,6 +203,24 @@ class WalletState(StatesGroup):
     sending_receipt = State()
 
 # ============================================================
+# تابع کمکی برای ویرایش ایمن پیام
+# ============================================================
+
+async def safe_edit_text(message, text, reply_markup=None, parse_mode="Markdown"):
+    """ویرایش ایمن پیام با بررسی تغییرات"""
+    try:
+        await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            # محتوا تکراری است - کاری نکن
+            pass
+        elif "message to edit not found" in str(e):
+            # پیام حذف شده - پیام جدید بفرست
+            await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
+        else:
+            raise
+
+# ============================================================
 # کیبوردها
 # ============================================================
 
@@ -283,7 +301,11 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
     try:
         # ======== منوی اصلی ========
         if data == "main_menu":
-            await callback.message.edit_text("🏠 منوی اصلی", reply_markup=main_menu())
+            await safe_edit_text(
+                callback.message,
+                "🏠 منوی اصلی",
+                main_menu()
+            )
             await callback.answer()
             return
         
@@ -292,9 +314,10 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
             with get_db() as session:
                 db_user = session.query(User).filter_by(telegram_id=user.id).first()
                 balance = db_user.balance if db_user else 0
-            await callback.message.edit_text(
+            await safe_edit_text(
+                callback.message,
                 f"💰 موجودی: {balance:,.0f} تومان",
-                reply_markup=wallet_menu()
+                wallet_menu()
             )
             await callback.answer()
             return
@@ -305,9 +328,10 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
                 db_user = session.query(User).filter_by(telegram_id=user.id).first()
                 balance = db_user.balance if db_user else 0
                 count = db_user.successful_transactions if db_user else 0
-            await callback.message.edit_text(
+            await safe_edit_text(
+                callback.message,
                 f"💰 موجودی: {balance:,.0f} تومان\n📊 تراکنش‌ها: {count}",
-                reply_markup=wallet_menu()
+                wallet_menu()
             )
             await callback.answer()
             return
@@ -315,7 +339,8 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
         # ======== افزایش موجودی ========
         if data == "deposit":
             await state.set_state(WalletState.entering_amount)
-            await callback.message.edit_text(
+            await safe_edit_text(
+                callback.message,
                 "💳 مبلغ را به تومان وارد کنید (حداقل 1000):"
             )
             await callback.answer()
@@ -324,9 +349,10 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
         # ======== خرید ========
         if data in ["buy_vip", "buy_normal"]:
             product_type = "vip" if data == "buy_vip" else "normal"
-            await callback.message.edit_text(
+            await safe_edit_text(
+                callback.message,
                 f"🛒 خرید VPN {product_type.upper()}\nنوع کاربری را انتخاب کنید:",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                InlineKeyboardMarkup(inline_keyboard=[
                     [
                         InlineKeyboardButton(text="👤 تک کاربره", callback_data=f"buy_{product_type}_single"),
                         InlineKeyboardButton(text="👥 دو کاربره", callback_data=f"buy_{product_type}_dual")
@@ -352,9 +378,10 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
                     return
                 
                 if db_user.balance < product.price:
-                    await callback.message.edit_text(
+                    await safe_edit_text(
+                        callback.message,
                         f"❌ موجودی کافی نیست!\n💰 موجودی: {db_user.balance:,.0f}\n💰 قیمت: {product.price:,.0f}",
-                        reply_markup=main_menu()
+                        main_menu()
                     )
                     await callback.answer()
                     return
@@ -376,18 +403,20 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
                 session.add(wallet_tx)
                 session.commit()
                 
-                await callback.message.edit_text(
+                await safe_edit_text(
+                    callback.message,
                     f"✅ خرید موفق!\n📦 {product.name}\n💰 {product.price:,.0f} تومان\n💳 موجودی: {db_user.balance:,.0f}",
-                    reply_markup=main_menu()
+                    main_menu()
                 )
             await callback.answer()
             return
         
         # ======== پشتیبانی ========
         if data == "support":
-            await callback.message.edit_text(
+            await safe_edit_text(
+                callback.message,
                 "🎧 پشتیبانی: @EchoVpnShopBot",
-                reply_markup=main_menu()
+                main_menu()
             )
             await callback.answer()
             return
@@ -397,9 +426,10 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
             with get_db() as session:
                 db_user = session.query(User).filter_by(telegram_id=user.id).first()
                 balance = db_user.balance if db_user else 0
-            await callback.message.edit_text(
+            await safe_edit_text(
+                callback.message,
                 f"👤 پروفایل\n🆔 {user.id}\n👤 {user.first_name}\n💰 {balance:,.0f} تومان",
-                reply_markup=main_menu()
+                main_menu()
             )
             await callback.answer()
             return
@@ -423,7 +453,11 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
                     sign = "+" if t.amount > 0 else ""
                     text += f"{t.created_at.strftime('%H:%M')} {t.type.value}: {sign}{t.amount:,.0f} تومان\n"
             
-            await callback.message.edit_text(text, reply_markup=wallet_menu())
+            await safe_edit_text(
+                callback.message,
+                text,
+                wallet_menu()
+            )
             await callback.answer()
             return
         
@@ -437,9 +471,10 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
                 with get_db() as session:
                     users_count = session.query(User).count()
                     orders_count = session.query(Order).count()
-                await callback.message.edit_text(
+                await safe_edit_text(
+                    callback.message,
                     f"📊 آمار\n👥 کاربران: {users_count}\n🛒 سفارش‌ها: {orders_count}",
-                    reply_markup=admin_menu()
+                    admin_menu()
                 )
                 await callback.answer()
                 return
@@ -450,7 +485,11 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
                     text = "👥 کاربران:\n\n"
                     for u in users[:10]:
                         text += f"🆔 {u.telegram_id} | @{u.username or 'ندارد'} | {u.balance:,.0f} تومان\n"
-                await callback.message.edit_text(text, reply_markup=admin_menu())
+                await safe_edit_text(
+                    callback.message,
+                    text,
+                    admin_menu()
+                )
                 await callback.answer()
                 return
             
@@ -460,7 +499,11 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
                     text = "💵 قیمت‌ها:\n\n"
                     for p in products:
                         text += f"{p.name}: {p.price:,.0f} تومان\n"
-                await callback.message.edit_text(text, reply_markup=admin_menu())
+                await safe_edit_text(
+                    callback.message,
+                    text,
+                    admin_menu()
+                )
                 await callback.answer()
                 return
             
@@ -474,7 +517,11 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
                         for c in cards:
                             formatted = " ".join([c.card_number[i:i+4] for i in range(0, 16, 4)])
                             text += f"{formatted}\n{c.card_holder_name}\n\n"
-                await callback.message.edit_text(text, reply_markup=admin_menu())
+                await safe_edit_text(
+                    callback.message,
+                    text,
+                    admin_menu()
+                )
                 await callback.answer()
                 return
             
@@ -483,7 +530,11 @@ async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
         
         # ======== آموزش ========
         if data == "tutorials":
-            await callback.message.edit_text("🎓 آموزشی موجود نیست.", reply_markup=main_menu())
+            await safe_edit_text(
+                callback.message,
+                "🎓 آموزشی موجود نیست.",
+                main_menu()
+            )
             await callback.answer()
             return
         
@@ -531,12 +582,15 @@ async def process_amount(message: types.Message, state: FSMContext):
         await message.answer("❌ فقط عدد وارد کنید.")
 
 # ============================================================
-# دریافت رسید (اصلاح شده با رفع خطای DetachedInstanceError)
+# دریافت رسید
 # ============================================================
 
 @dp.callback_query(lambda c: c.data == "send_receipt")
 async def send_receipt_start(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("📸 لطفاً تصویر رسید را ارسال کنید:")
+    await safe_edit_text(
+        callback.message,
+        "📸 لطفاً تصویر رسید را ارسال کنید:"
+    )
     await callback.answer()
 
 @dp.message(WalletState.sending_receipt, lambda m: m.photo is not None)
@@ -547,7 +601,6 @@ async def process_receipt(message: types.Message, state: FSMContext):
     file_id = message.photo[-1].file_id
     transaction_id = f"PAY-{uuid.uuid4().hex[:8].upper()}"
     
-    # ======== همه کارهای دیتابیس داخل این بلاک ========
     with get_db() as session:
         db_user = session.query(User).filter_by(telegram_id=user.id).first()
         if not db_user:
@@ -566,7 +619,6 @@ async def process_receipt(message: types.Message, state: FSMContext):
         session.add(payment)
         session.commit()
         
-        # ======== ارسال به ادمین ========
         if ADMIN_IDS:
             await bot.send_photo(
                 ADMIN_IDS,
@@ -583,19 +635,17 @@ async def process_receipt(message: types.Message, state: FSMContext):
                 ])
             )
     
-    # ======== خارج از بلاک with، سشن بسته شده ========
     await state.clear()
     await message.answer("✅ رسید دریافت شد. در حال بررسی...", reply_markup=main_menu())
 
 # ============================================================
-# تایید و رد پرداخت توسط ادمین (اصلاح شده با رفع خطای DetachedInstanceError)
+# تایید و رد پرداخت توسط ادمین
 # ============================================================
 
 @dp.callback_query(lambda c: c.data.startswith("confirm_"))
 async def confirm_payment(callback: types.CallbackQuery):
     payment_id = int(callback.data.replace("confirm_", ""))
     
-    # ======== همه کارهای دیتابیس داخل این بلاک ========
     with get_db() as session:
         payment = session.query(Payment).filter_by(id=payment_id).first()
         if not payment:
@@ -611,7 +661,6 @@ async def confirm_payment(callback: types.CallbackQuery):
             await callback.answer("کاربر یافت نشد!")
             return
         
-        # افزایش موجودی
         balance_before = user.balance
         user.balance += payment.amount
         user.successful_transactions += 1
@@ -632,7 +681,6 @@ async def confirm_payment(callback: types.CallbackQuery):
         session.add(wallet_tx)
         session.commit()
         
-        # ======== ارسال پیام به کاربر ========
         try:
             await bot.send_message(
                 user.telegram_id,
@@ -641,8 +689,8 @@ async def confirm_payment(callback: types.CallbackQuery):
         except:
             pass
         
-        # ======== به‌روزرسانی پیام ادمین ========
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback.message,
             f"✅ پرداخت تایید شد!\n"
             f"👤 @{user.username or 'ندارد'}\n"
             f"💰 {payment.amount:,.0f} تومان"
@@ -653,7 +701,6 @@ async def confirm_payment(callback: types.CallbackQuery):
 async def reject_payment(callback: types.CallbackQuery):
     payment_id = int(callback.data.replace("reject_", ""))
     
-    # ======== همه کارهای دیتابیس داخل این بلاک ========
     with get_db() as session:
         payment = session.query(Payment).filter_by(id=payment_id).first()
         if not payment:
@@ -671,7 +718,6 @@ async def reject_payment(callback: types.CallbackQuery):
         payment.admin_id = callback.from_user.id
         session.commit()
         
-        # ======== ارسال پیام به کاربر ========
         try:
             await bot.send_message(
                 user.telegram_id,
@@ -680,8 +726,8 @@ async def reject_payment(callback: types.CallbackQuery):
         except:
             pass
         
-        # ======== به‌روزرسانی پیام ادمین ========
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback.message,
             f"❌ پرداخت رد شد!\n"
             f"👤 @{user.username or 'ندارد'}\n"
             f"💰 {payment.amount:,.0f} تومان"
@@ -691,7 +737,11 @@ async def reject_payment(callback: types.CallbackQuery):
 @dp.callback_query(lambda c: c.data == "cancel_payment")
 async def cancel_payment(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text("❌ لغو شد.", reply_markup=main_menu())
+    await safe_edit_text(
+        callback.message,
+        "❌ لغو شد.",
+        main_menu()
+    )
     await callback.answer()
 
 # ============================================================
