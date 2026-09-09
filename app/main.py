@@ -18,7 +18,7 @@ try:
     print("✅ Environment variables loaded")
     
     # بررسی توکن
-    TOKEN = os.getenv('BOT_TOKEN')
+    TOKEN = os.getenv('8862607230:AAGIJxaBzKmSefeU7u4pldyvGnFGmHM2YMo')
     if not TOKEN:
         print("❌ BOT_TOKEN not found in environment!")
         print("💡 Please set BOT_TOKEN in Render Environment Variables")
