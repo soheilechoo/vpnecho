@@ -1,460 +1,707 @@
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.fsm.context import FSMContext
-from aiogram.filters import Command
+import sys
 import os
+import traceback
+import asyncio
+import uuid
+from datetime import datetime
 
-from database import db
-from database.models import User, BankCard, ProductPrice, Order
-from states.admin_states import AdminState
-from keyboards.admin_keyboards import (
-    get_admin_main_menu,
-    get_prices_management_menu,
-    get_product_selection_keyboard,
-    get_card_management_menu,
-    get_cards_list_keyboard,
-    get_confirmation_keyboard,
-    get_back_to_cards_keyboard
-)
+# ایجاد پوشه‌های لازم
+os.makedirs('logs', exist_ok=True)
+os.makedirs('data', exist_ok=True)
 
-router = Router()
+print("=" * 50)
+print("🚀 Starting VPN Bot...")
+print("=" * 50)
+sys.stdout.flush()
 
 # ============================================================
-# 1. منوی اصلی ادمین
+# بارگذاری متغیرهای محیطی
 # ============================================================
 
-@router.message(Command("admin"))
-async def admin_panel(message: Message):
-    """ورود به پنل ادمین"""
-    admin_id = int(os.getenv('ADMIN_IDS', '0'))
-    
-    if message.from_user.id != admin_id:
-        await message.answer("⛔ شما دسترسی به این بخش ندارید.")
-        return
-    
-    await message.answer(
-        "👋 به پنل مدیریت خوش آمدید!\n\n"
-        "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
-        reply_markup=get_admin_main_menu()
-    )
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✅ Environment variables loaded")
+except Exception as e:
+    print(f"❌ Error loading .env: {e}")
+    sys.exit(1)
 
-@router.callback_query(F.data == "back_to_admin")
-async def back_to_admin(callback: CallbackQuery, state: FSMContext):
-    """بازگشت به منوی اصلی ادمین"""
-    await state.clear()
-    await callback.message.edit_text(
-        "👋 به پنل مدیریت خوش آمدید!\n\n"
-        "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
-        reply_markup=get_admin_main_menu()
-    )
-    await callback.answer()
+TOKEN = os.getenv('BOT_TOKEN')
+if not TOKEN:
+    print("❌ BOT_TOKEN not found!")
+    sys.exit(1)
+print("✅ BOT_TOKEN found")
+
+ADMIN_IDS = int(os.getenv('ADMIN_IDS', '0'))
+print(f"✅ ADMIN_IDS: {ADMIN_IDS}")
 
 # ============================================================
-# 2. مدیریت قیمت‌ها
+# ایمپورت‌های اصلی
 # ============================================================
 
-@router.callback_query(F.data == "admin_prices")
-async def manage_prices(callback: CallbackQuery):
-    """نمایش مدیریت قیمت‌ها"""
-    with db.get_session() as session:
-        prices = session.query(ProductPrice).all()
-        
-        if not prices:
-            default_prices = [
-                ("vip_single", 250),
-                ("vip_dual", 450),
-                ("normal_single", 190),
-                ("normal_dual", 270)
-            ]
-            for product_type, price in default_prices:
-                existing = session.query(ProductPrice).filter_by(product_type=product_type).first()
-                if not existing:
-                    session.add(ProductPrice(product_type=product_type, price=price))
-            session.commit()
-            prices = session.query(ProductPrice).all()
-        
-        price_text = "📋 **مدیریت قیمت‌ها**\n\n"
-        product_names = {
-            "vip_single": "🟣 VIP تک کاربره",
-            "vip_dual": "🟣 VIP دو کاربره",
-            "normal_single": "🔵 معمولی تک کاربره",
-            "normal_dual": "🔵 معمولی دو کاربره"
-        }
-        for p in prices:
-            name = product_names.get(p.product_type, p.product_type)
-            price_text += f"{name}: **{p.price:,.0f}** تومان\n"
-        
-        await callback.message.edit_text(
-            price_text,
-            reply_markup=get_prices_management_menu(),
-            parse_mode="Markdown"
-        )
-    await callback.answer()
+try:
+    from aiogram import Bot, Dispatcher, types
+    from aiogram.filters import Command
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from aiogram.enums import ParseMode
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.state import State, StatesGroup
+    from aiogram.exceptions import TelegramBadRequest
+    print("✅ aiogram imported")
+except Exception as e:
+    print(f"❌ Error importing aiogram: {e}")
+    sys.exit(1)
 
-@router.callback_query(F.data == "edit_price")
-async def select_product_for_price_edit(callback: CallbackQuery, state: FSMContext):
-    """انتخاب محصول برای ویرایش قیمت"""
-    with db.get_session() as session:
-        products = session.query(ProductPrice).all()
-        await callback.message.edit_text(
-            "📝 لطفاً سرویس مورد نظر برای تغییر قیمت را انتخاب کنید:",
-            reply_markup=get_product_selection_keyboard(products)
-        )
-        await state.set_state(AdminState.waiting_for_product_selection)
-    await callback.answer()
+# ============================================================
+# دیتابیس
+# ============================================================
 
-@router.callback_query(F.data.startswith("price_product_"), AdminState.waiting_for_product_selection)
-async def get_new_price(callback: CallbackQuery, state: FSMContext):
-    """دریافت قیمت جدید"""
-    product_type = callback.data.replace("price_product_", "")
-    await state.update_data(product_type=product_type)
-    
-    with db.get_session() as session:
-        product = session.query(ProductPrice).filter_by(product_type=product_type).first()
-        product_names = {
-            "vip_single": "VIP تک کاربره",
-            "vip_dual": "VIP دو کاربره",
-            "normal_single": "معمولی تک کاربره",
-            "normal_dual": "معمولی دو کاربره"
-        }
-        name = product_names.get(product_type, product_type)
-        
-        await callback.message.edit_text(
-            f"💰 قیمت جدید برای **{name}** را وارد کنید:\n\n"
-            f"قیمت فعلی: **{product.price:,.0f}** تومان\n\n"
-            "لطفاً فقط عدد وارد کنید:",
-            parse_mode="Markdown"
-        )
-        await state.set_state(AdminState.waiting_for_new_price)
-    await callback.answer()
+try:
+    from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean, BigInteger, Index
+    from sqlalchemy.ext.declarative import declarative_base
+    from sqlalchemy.orm import sessionmaker, relationship
+    from sqlalchemy.sql import func
+    from contextlib import contextmanager
+    import enum
+    print("✅ SQLAlchemy imported")
+except Exception as e:
+    print(f"❌ Error importing SQLAlchemy: {e}")
+    sys.exit(1)
 
-@router.message(AdminState.waiting_for_new_price)
-async def save_new_price(message: Message, state: FSMContext):
-    """ذخیره قیمت جدید"""
+# ============================================================
+# مدل‌های دیتابیس
+# ============================================================
+
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./data/vpn_bot.db')
+engine = create_engine(DATABASE_URL, echo=False)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+class PaymentStatus(enum.Enum):
+    PENDING = "pending"
+    SUCCESS = "success"
+    REJECTED = "rejected"
+
+class TransactionType(enum.Enum):
+    DEPOSIT = "deposit"
+    PURCHASE = "purchase"
+    REFUND = "refund"
+    ADMIN_CREDIT = "admin_credit"
+    ADMIN_DEBIT = "admin_debit"
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
+    username = Column(String(100), nullable=True)
+    first_name = Column(String(100), nullable=True)
+    last_name = Column(String(100), nullable=True)
+    phone_number = Column(String(20), nullable=True)
+    balance = Column(Float, default=0.0)
+    successful_transactions = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class Payment(Base):
+    __tablename__ = "payments"
+    id = Column(Integer, primary_key=True, index=True)
+    transaction_id = Column(String(50), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    amount = Column(Float, nullable=False)
+    status = Column(Enum(PaymentStatus), default=PaymentStatus.PENDING)
+    receipt_file_id = Column(String(200), nullable=True)
+    receipt_type = Column(String(50), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
+    admin_id = Column(BigInteger, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+
+class WalletTransaction(Base):
+    __tablename__ = "wallet_transactions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    type = Column(Enum(TransactionType), nullable=False)
+    amount = Column(Float, nullable=False)
+    balance_before = Column(Float, nullable=False)
+    balance_after = Column(Float, nullable=False)
+    reference_id = Column(String(100), nullable=True)
+    status = Column(String(20), default="success")
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Product(Base):
+    __tablename__ = "products"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    product_type = Column(String(50), unique=True, nullable=False)
+    price = Column(Float, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class BankCard(Base):
+    __tablename__ = "bank_cards"
+    id = Column(Integer, primary_key=True, index=True)
+    card_number = Column(String(16), unique=True, nullable=False, index=True)
+    card_holder_name = Column(String(100), nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class Order(Base):
+    __tablename__ = "orders"
+    id = Column(Integer, primary_key=True, index=True)
+    order_number = Column(String(20), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    product_name = Column(String(100), nullable=False)
+    price = Column(Float, nullable=False)
+    status = Column(String(20), default="pending")
+    admin_note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+
+# ============================================================
+# ایجاد جداول
+# ============================================================
+
+Base.metadata.create_all(bind=engine)
+print("✅ Database tables created")
+
+@contextmanager
+def get_db():
+    session = SessionLocal()
     try:
-        new_price = float(message.text.strip())
-        if new_price < 0:
-            await message.answer("❌ قیمت نمی‌تواند منفی باشد. دوباره وارد کنید:")
-            return
-        
-        data = await state.get_data()
-        product_type = data.get('product_type')
-        
-        with db.get_session() as session:
-            product = session.query(ProductPrice).filter_by(product_type=product_type).first()
-            if product:
-                old_price = product.price
-                product.price = new_price
-                session.commit()
-                
-                product_names = {
-                    "vip_single": "VIP تک کاربره",
-                    "vip_dual": "VIP دو کاربره",
-                    "normal_single": "معمولی تک کاربره",
-                    "normal_dual": "معمولی دو کاربره"
-                }
-                name = product_names.get(product_type, product_type)
-                
-                await message.answer(
-                    f"✅ قیمت **{name}** با موفقیت تغییر کرد!\n\n"
-                    f"💰 قیمت قبلی: {old_price:,.0f} تومان\n"
-                    f"💰 قیمت جدید: {new_price:,.0f} تومان",
-                    parse_mode="Markdown"
-                )
-                
-                await state.clear()
-                await manage_prices(message)
-            else:
-                await message.answer("❌ محصول یافت نشد.")
-                
-    except ValueError:
-        await message.answer("❌ لطفاً فقط عدد وارد کنید:")
-
-# ============================================================
-# 3. مدیریت کارت‌های بانکی
-# ============================================================
-
-@router.callback_query(F.data == "admin_cards")
-async def manage_cards(callback: CallbackQuery):
-    """منوی مدیریت کارت‌های بانکی"""
-    await callback.message.edit_text(
-        "💳 **مدیریت شماره کارت‌ها**\n\n"
-        "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
-        reply_markup=get_card_management_menu(),
-        parse_mode="Markdown"
-    )
-    await callback.answer()
-
-@router.callback_query(F.data == "add_card")
-async def add_card_start(callback: CallbackQuery, state: FSMContext):
-    """شروع فرآیند افزودن کارت"""
-    await state.set_state(AdminState.waiting_for_card_number)
-    await callback.message.edit_text(
-        "💳 **افزودن شماره کارت جدید**\n\n"
-        "لطفاً شماره کارت (۱۶ رقم) را وارد کنید:\n"
-        "مثال: `6037997512345678`\n\n"
-        "یا برای بازگشت روی دکمه زیر کلیک کنید:",
-        parse_mode="Markdown",
-        reply_markup=get_back_to_cards_keyboard()
-    )
-    await callback.answer()
-
-@router.message(AdminState.waiting_for_card_number)
-async def process_card_number(message: Message, state: FSMContext):
-    """پردازش شماره کارت"""
-    card_number = message.text.strip().replace(" ", "").replace("-", "")
-    
-    if not card_number.isdigit():
-        await message.answer(
-            "❌ **شماره کارت نامعتبر است!**\n\n"
-            "شماره کارت باید فقط شامل **عدد** باشد.\n"
-            "لطفاً دوباره وارد کنید:",
-            parse_mode="Markdown"
-        )
-        return
-    
-    if len(card_number) != 16:
-        await message.answer(
-            f"❌ **شماره کارت نامعتبر است!**\n\n"
-            f"شماره کارت باید **۱۶ رقم** باشد.\n"
-            f"شما {len(card_number)} رقم وارد کردید.\n\n"
-            "لطفاً دوباره وارد کنید:",
-            parse_mode="Markdown"
-        )
-        return
-    
-    with db.get_session() as session:
-        existing = session.query(BankCard).filter_by(card_number=card_number).first()
-        if existing:
-            await message.answer(
-                "❌ **این شماره کارت قبلاً ثبت شده است!**\n\n"
-                "لطفاً شماره کارت دیگری وارد کنید:",
-                parse_mode="Markdown"
-            )
-            return
-    
-    await state.update_data(card_number=card_number)
-    await state.set_state(AdminState.waiting_for_card_holder)
-    
-    formatted = " ".join([card_number[i:i+4] for i in range(0, 16, 4)])
-    
-    await message.answer(
-        f"✅ شماره کارت: `{formatted}`\n\n"
-        "👤 **نام صاحب کارت** را وارد کنید:\n"
-        "مثال: `علی رضایی`",
-        parse_mode="Markdown"
-    )
-
-@router.message(AdminState.waiting_for_card_holder)
-async def process_card_holder(message: Message, state: FSMContext):
-    """پردازش نام صاحب کارت"""
-    card_holder = message.text.strip()
-    
-    if len(card_holder) < 3:
-        await message.answer(
-            "❌ **نام صاحب کارت نامعتبر است!**\n\n"
-            "نام باید حداقل **۳ کاراکتر** باشد.\n"
-            "لطفاً دوباره وارد کنید:",
-            parse_mode="Markdown"
-        )
-        return
-    
-    data = await state.get_data()
-    card_number = data.get('card_number')
-    formatted = " ".join([card_number[i:i+4] for i in range(0, 16, 4)])
-    
-    await state.update_data(card_holder=card_holder)
-    await state.set_state(AdminState.confirm_card)
-    
-    await message.answer(
-        f"📋 **تأیید اطلاعات کارت جدید**\n\n"
-        f"💳 شماره کارت: `{formatted}`\n"
-        f"👤 صاحب کارت: **{card_holder}**\n\n"
-        "آیا اطلاعات صحیح است؟",
-        reply_markup=get_confirmation_keyboard(),
-        parse_mode="Markdown"
-    )
-
-@router.callback_query(F.data == "confirm_card", AdminState.confirm_card)
-async def save_card(callback: CallbackQuery, state: FSMContext):
-    """ذخیره کارت جدید"""
-    data = await state.get_data()
-    card_number = data.get('card_number')
-    card_holder = data.get('card_holder')
-    formatted = " ".join([card_number[i:i+4] for i in range(0, 16, 4)])
-    
-    with db.get_session() as session:
-        new_card = BankCard(
-            card_number=card_number,
-            card_holder_name=card_holder,
-            is_active=True
-        )
-        session.add(new_card)
+        yield session
         session.commit()
-        
-        await callback.message.edit_text(
-            f"✅ **شماره کارت با موفقیت اضافه شد!**\n\n"
-            f"💳 شماره کارت: `{formatted}`\n"
-            f"👤 صاحب کارت: **{card_holder}**",
-            parse_mode="Markdown",
-            reply_markup=get_card_management_menu()
-        )
-        await state.clear()
-    await callback.answer()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
-@router.callback_query(F.data == "cancel_card")
-async def cancel_card(callback: CallbackQuery, state: FSMContext):
-    """لغو افزودن کارت"""
-    await state.clear()
-    await callback.message.edit_text(
-        "❌ عملیات افزودن کارت لغو شد.",
-        reply_markup=get_card_management_menu()
+# ============================================================
+# ایجاد ربات
+# ============================================================
+
+storage = MemoryStorage()
+bot = Bot(token=TOKEN, parse_mode=ParseMode.HTML)
+dp = Dispatcher(storage=storage)
+
+print("✅ Bot and Dispatcher created")
+
+# ============================================================
+# State‌ها
+# ============================================================
+
+class WalletState(StatesGroup):
+    entering_amount = State()
+    sending_receipt = State()
+
+# ============================================================
+# کیبوردها
+# ============================================================
+
+def main_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton("🟣 خرید VPN VIP", callback_data="buy_vip"),
+         InlineKeyboardButton("🔵 خرید VPN معمولی", callback_data="buy_normal")],
+        [InlineKeyboardButton("🎓 آموزش", callback_data="tutorials")],
+        [InlineKeyboardButton("💰 موجودی", callback_data="wallet"),
+         InlineKeyboardButton("🎧 پشتیبانی", callback_data="support")],
+        [InlineKeyboardButton("👤 پروفایل", callback_data="profile")]
+    ])
+
+def wallet_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton("💰 موجودی من", callback_data="balance")],
+        [InlineKeyboardButton("➕ افزایش موجودی", callback_data="deposit")],
+        [InlineKeyboardButton("📜 تاریخچه", callback_data="transactions")],
+        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+    ])
+
+def admin_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton("📊 آمار", callback_data="admin_stats"),
+         InlineKeyboardButton("👥 کاربران", callback_data="admin_users")],
+        [InlineKeyboardButton("💵 قیمت‌ها", callback_data="admin_prices"),
+         InlineKeyboardButton("💳 کارت‌ها", callback_data="admin_cards")],
+        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+    ])
+
+# ============================================================
+# هندلرهای اصلی
+# ============================================================
+
+@dp.message(Command("start"))
+async def start_cmd(message: types.Message):
+    user = message.from_user
+    with get_db() as session:
+        db_user = session.query(User).filter_by(telegram_id=user.id).first()
+        if not db_user:
+            db_user = User(telegram_id=user.id, username=user.username, first_name=user.first_name)
+            session.add(db_user)
+            session.commit()
+            print(f"✅ New user: {user.id}")
+    await message.answer(
+        f"👋 {user.first_name} عزیز خوش آمدید!\n💰 موجودی: 0 تومان",
+        reply_markup=main_menu()
     )
-    await callback.answer()
+
+@dp.message(Command("admin"))
+async def admin_cmd(message: types.Message):
+    if message.from_user.id != ADMIN_IDS:
+        await message.answer("⛔ دسترسی ندارید.")
+        return
+    await message.answer("👋 پنل مدیریت", reply_markup=admin_menu())
 
 # ============================================================
-# 4. لیست شماره کارت‌ها
+# هندلرهای دکمه‌ها
 # ============================================================
 
-@router.callback_query(F.data == "list_cards")
-async def list_cards(callback: CallbackQuery):
-    """نمایش لیست کارت‌ها"""
-    with db.get_session() as session:
-        cards = session.query(BankCard).filter_by(is_active=True).all()
+@dp.callback_query()
+async def handle_callback(callback: types.CallbackQuery, state: FSMContext):
+    data = callback.data
+    user = callback.from_user
+    
+    try:
+        # ======== منوی اصلی ========
+        if data == "main_menu":
+            await callback.message.edit_text("🏠 منوی اصلی", reply_markup=main_menu())
+            await callback.answer()
+            return
         
-        if not cards:
+        # ======== کیف پول ========
+        if data == "wallet":
+            with get_db() as session:
+                db_user = session.query(User).filter_by(telegram_id=user.id).first()
+                balance = db_user.balance if db_user else 0
             await callback.message.edit_text(
-                "📭 **هیچ شماره کارتی ثبت نشده است.**",
-                parse_mode="Markdown",
-                reply_markup=get_card_management_menu()
+                f"💰 موجودی: {balance:,.0f} تومان",
+                reply_markup=wallet_menu()
             )
             await callback.answer()
             return
         
-        text = "📋 **لیست شماره کارت‌ها:**\n\n"
-        for idx, card in enumerate(cards, 1):
-            formatted = " ".join([card.card_number[i:i+4] for i in range(0, 16, 4)])
-            text += f"{idx}. 💳 `{formatted}`\n"
-            text += f"   👤 {card.card_holder_name}\n\n"
+        # ======== موجودی ========
+        if data == "balance":
+            with get_db() as session:
+                db_user = session.query(User).filter_by(telegram_id=user.id).first()
+                balance = db_user.balance if db_user else 0
+                count = db_user.successful_transactions if db_user else 0
+            await callback.message.edit_text(
+                f"💰 موجودی: {balance:,.0f} تومان\n📊 تراکنش‌ها: {count}",
+                reply_markup=wallet_menu()
+            )
+            await callback.answer()
+            return
         
-        await callback.message.edit_text(
-            text,
-            parse_mode="Markdown",
-            reply_markup=get_cards_list_keyboard(cards)
-        )
-    await callback.answer()
+        # ======== افزایش موجودی ========
+        if data == "deposit":
+            await state.set_state(WalletState.entering_amount)
+            await callback.message.edit_text(
+                "💳 مبلغ را به تومان وارد کنید (حداقل 1000):"
+            )
+            await callback.answer()
+            return
+        
+        # ======== خرید ========
+        if data in ["buy_vip", "buy_normal"]:
+            product_type = "vip" if data == "buy_vip" else "normal"
+            await callback.message.edit_text(
+                f"🛒 خرید VPN {product_type.upper()}\nنوع کاربری را انتخاب کنید:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton("👤 تک کاربره", callback_data=f"buy_{product_type}_single"),
+                     InlineKeyboardButton("👥 دو کاربره", callback_data=f"buy_{product_type}_dual")],
+                    [InlineKeyboardButton("↩️ بازگشت", callback_data="main_menu")]
+                ])
+            )
+            await callback.answer()
+            return
+        
+        # ======== پردازش خرید ========
+        if data.startswith("buy_vip_") or data.startswith("buy_normal_"):
+            product_type = data.replace("buy_", "")
+            with get_db() as session:
+                db_user = session.query(User).filter_by(telegram_id=user.id).first()
+                if not db_user:
+                    await callback.answer("لطفاً /start را بزنید!")
+                    return
+                
+                product = session.query(Product).filter_by(product_type=product_type).first()
+                if not product:
+                    await callback.answer("محصول یافت نشد!")
+                    return
+                
+                if db_user.balance < product.price:
+                    await callback.message.edit_text(
+                        f"❌ موجودی کافی نیست!\n💰 موجودی: {db_user.balance:,.0f}\n💰 قیمت: {product.price:,.0f}",
+                        reply_markup=main_menu()
+                    )
+                    await callback.answer()
+                    return
+                
+                # خرید
+                balance_before = db_user.balance
+                db_user.balance -= product.price
+                transaction_id = f"PUR-{uuid.uuid4().hex[:8].upper()}"
+                
+                wallet_tx = WalletTransaction(
+                    user_id=db_user.id,
+                    type=TransactionType.PURCHASE,
+                    amount=-product.price,
+                    balance_before=balance_before,
+                    balance_after=db_user.balance,
+                    reference_id=transaction_id,
+                    description=f"خرید {product.name}"
+                )
+                session.add(wallet_tx)
+                session.commit()
+                
+                await callback.message.edit_text(
+                    f"✅ خرید موفق!\n📦 {product.name}\n💰 {product.price:,.0f} تومان\n💳 موجودی: {db_user.balance:,.0f}",
+                    reply_markup=main_menu()
+                )
+            await callback.answer()
+            return
+        
+        # ======== پشتیبانی ========
+        if data == "support":
+            await callback.message.edit_text(
+                "🎧 پشتیبانی: @EchoVpnShopBot",
+                reply_markup=main_menu()
+            )
+            await callback.answer()
+            return
+        
+        # ======== پروفایل ========
+        if data == "profile":
+            with get_db() as session:
+                db_user = session.query(User).filter_by(telegram_id=user.id).first()
+                balance = db_user.balance if db_user else 0
+            await callback.message.edit_text(
+                f"👤 پروفایل\n🆔 {user.id}\n👤 {user.first_name}\n💰 {balance:,.0f} تومان",
+                reply_markup=main_menu()
+            )
+            await callback.answer()
+            return
+        
+        # ======== تاریخچه ========
+        if data == "transactions":
+            with get_db() as session:
+                db_user = session.query(User).filter_by(telegram_id=user.id).first()
+                if db_user:
+                    txs = session.query(WalletTransaction).filter_by(user_id=db_user.id).order_by(
+                        WalletTransaction.created_at.desc()
+                    ).limit(5).all()
+                else:
+                    txs = []
+            
+            if not txs:
+                text = "📜 هیچ تراکنشی یافت نشد."
+            else:
+                text = "📜 ۵ تراکنش اخیر:\n\n"
+                for t in txs:
+                    sign = "+" if t.amount > 0 else ""
+                    text += f"{t.created_at.strftime('%H:%M')} {t.type.value}: {sign}{t.amount:,.0f} تومان\n"
+            
+            await callback.message.edit_text(text, reply_markup=wallet_menu())
+            await callback.answer()
+            return
+        
+        # ======== پنل ادمین ========
+        if data.startswith("admin_"):
+            if user.id != ADMIN_IDS:
+                await callback.answer("⛔ دسترسی ندارید!", show_alert=True)
+                return
+            
+            if data == "admin_stats":
+                with get_db() as session:
+                    users_count = session.query(User).count()
+                    orders_count = session.query(Order).count()
+                await callback.message.edit_text(
+                    f"📊 آمار\n👥 کاربران: {users_count}\n🛒 سفارش‌ها: {orders_count}",
+                    reply_markup=admin_menu()
+                )
+                await callback.answer()
+                return
+            
+            if data == "admin_users":
+                with get_db() as session:
+                    users = session.query(User).all()
+                    text = "👥 کاربران:\n\n"
+                    for u in users[:10]:
+                        text += f"🆔 {u.telegram_id} | @{u.username or 'ندارد'} | {u.balance:,.0f} تومان\n"
+                await callback.message.edit_text(text, reply_markup=admin_menu())
+                await callback.answer()
+                return
+            
+            if data == "admin_prices":
+                with get_db() as session:
+                    products = session.query(Product).all()
+                    text = "💵 قیمت‌ها:\n\n"
+                    for p in products:
+                        text += f"{p.name}: {p.price:,.0f} تومان\n"
+                await callback.message.edit_text(text, reply_markup=admin_menu())
+                await callback.answer()
+                return
+            
+            if data == "admin_cards":
+                with get_db() as session:
+                    cards = session.query(BankCard).filter_by(is_active=True).all()
+                    if not cards:
+                        text = "💳 هیچ کارتی ثبت نشده."
+                    else:
+                        text = "💳 کارت‌ها:\n\n"
+                        for c in cards:
+                            formatted = " ".join([c.card_number[i:i+4] for i in range(0, 16, 4)])
+                            text += f"{formatted}\n{c.card_holder_name}\n\n"
+                await callback.message.edit_text(text, reply_markup=admin_menu())
+                await callback.answer()
+                return
+            
+            await callback.answer("در حال توسعه...")
+            return
+        
+        # ======== آموزش ========
+        if data == "tutorials":
+            await callback.message.edit_text("🎓 آموزشی موجود نیست.", reply_markup=main_menu())
+            await callback.answer()
+            return
+        
+        # ======== اگر هیچکدام ========
+        await callback.answer("⏳ در حال توسعه...")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        traceback.print_exc()
+        await callback.answer("خطا! لطفاً دوباره تلاش کنید.")
 
 # ============================================================
-# 5. آمار
+# دریافت مبلغ (FSM)
 # ============================================================
 
-@router.callback_query(F.data == "admin_stats")
-async def admin_stats(callback: CallbackQuery):
-    """نمایش آمار کلی"""
-    with db.get_session() as session:
-        total_users = session.query(User).count()
-        total_orders = session.query(Order).count()
-        pending_orders = session.query(Order).filter_by(status="pending").count()
+@dp.message(WalletState.entering_amount)
+async def process_amount(message: types.Message, state: FSMContext):
+    try:
+        amount = int(message.text.strip())
+        if amount < 1000:
+            await message.answer("❌ حداقل 1000 تومان. دوباره وارد کنید:")
+            return
+        if amount > 10000000:
+            await message.answer("❌ حداکثر 10,000,000 تومان. دوباره وارد کنید:")
+            return
         
-        await callback.message.edit_text(
-            f"📊 **آمار کلی**\n\n"
-            f"👥 کاربران: {total_users}\n"
-            f"🛒 سفارش‌ها: {total_orders}\n"
-            f"⏳ در انتظار: {pending_orders}\n",
-            parse_mode="Markdown",
+        await state.update_data(amount=amount)
+        card_number = os.getenv('CARD_NUMBER', '6037-9912-3456-7890')
+        card_owner = os.getenv('CARD_OWNER', 'ECHO VPN')
+        
+        await message.answer(
+            f"💳 اطلاعات پرداخت\n\n"
+            f"💰 مبلغ: {amount:,} تومان\n"
+            f"🏦 شماره کارت: {card_number}\n"
+            f"👤 صاحب کارت: {card_owner}\n\n"
+            f"پس از واریز، عکس رسید را ارسال کنید.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="↩️ بازگشت به پنل", callback_data="back_to_admin")]
+                [InlineKeyboardButton("📸 ارسال رسید", callback_data="send_receipt")],
+                [InlineKeyboardButton("❌ انصراف", callback_data="cancel_payment")]
             ])
         )
-    await callback.answer()
-
-# ============================================================
-# 6. سایر دکمه‌ها (placeholder)
-# ============================================================
-
-@router.callback_query(F.data.startswith("admin_"))
-async def admin_placeholder(callback: CallbackQuery):
-    """Placeholder برای دکمه‌های در حال توسعه"""
-    data = callback.data.replace("admin_", "")
-    await callback.message.edit_text(
-        f"📋 **{data.title()}**\n\n"
-        "این بخش در حال توسعه است...",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="↩️ بازگشت به پنل", callback_data="back_to_admin")]
-        ])
-    )
-    await callback.answer()
-
-# ============================================================
-# 7. جستجوی کاربر
-# ============================================================
-
-@router.callback_query(F.data == "admin_search")
-async def admin_search(callback: CallbackQuery, state: FSMContext):
-    """جستجوی کاربر"""
-    await callback.message.edit_text(
-        "🔎 **جستجوی کاربر**\n\n"
-        "لطفاً **شناسه تلگرام** یا **یوزرنیم** کاربر را وارد کنید:",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="↩️ بازگشت", callback_data="back_to_admin")]
-        ])
-    )
-    await state.set_state(AdminState.waiting_for_user_search)
-    await callback.answer()
-
-@router.message(AdminState.waiting_for_user_search)
-async def search_user(message: Message, state: FSMContext):
-    """جستجوی کاربر"""
-    query = message.text.strip()
-    
-    with db.get_session() as session:
-        if query.isdigit():
-            user = session.query(User).filter_by(telegram_id=int(query)).first()
-        else:
-            user = session.query(User).filter_by(username=query.replace("@", "")).first()
+        await state.set_state(WalletState.sending_receipt)
         
-        if user:
-            await message.answer(
-                f"👤 **اطلاعات کاربر**\n\n"
-                f"🆔 شناسه: {user.telegram_id}\n"
-                f"👤 نام: {user.first_name or 'نامشخص'}\n"
-                f"📱 یوزرنیم: @{user.username or 'ندارد'}\n"
-                f"💰 موجودی: {user.balance:,.0f} تومان\n"
-                f"📅 تاریخ عضویت: {user.created_at.strftime('%Y-%m-%d %H:%M')}",
-                parse_mode="Markdown",
-                reply_markup=get_admin_main_menu()
-            )
-        else:
-            await message.answer("❌ کاربری با این مشخصات یافت نشد.")
-        await state.clear()
+    except ValueError:
+        await message.answer("❌ فقط عدد وارد کنید.")
 
 # ============================================================
-# 8. تنظیمات
+# دریافت رسید
 # ============================================================
 
-@router.callback_query(F.data == "admin_settings")
-async def admin_settings(callback: CallbackQuery):
-    """تنظیمات"""
-    card_number = os.getenv('CARD_NUMBER', '6037-9912-3456-7890')
-    card_owner = os.getenv('CARD_OWNER', 'ECHO VPN')
+@dp.callback_query(F.data == "send_receipt")
+async def send_receipt_start(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("📸 لطفاً تصویر رسید را ارسال کنید:")
+    await callback.answer()
+
+@dp.message(WalletState.sending_receipt, F.photo)
+async def process_receipt(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    amount = data.get('amount', 0)
+    user = message.from_user
+    file_id = message.photo[-1].file_id
+    transaction_id = f"PAY-{uuid.uuid4().hex[:8].upper()}"
     
-    await callback.message.edit_text(
-        f"⚙️ **تنظیمات**\n\n"
-        f"💳 شماره کارت: `{card_number}`\n"
-        f"👤 صاحب کارت: {card_owner}\n\n"
-        "برای تغییر شماره کارت از بخش **مدیریت شماره کارت** استفاده کنید.",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="↩️ بازگشت به پنل", callback_data="back_to_admin")]
-        ])
-    )
+    with get_db() as session:
+        db_user = session.query(User).filter_by(telegram_id=user.id).first()
+        if not db_user:
+            db_user = User(telegram_id=user.id, username=user.username, first_name=user.first_name)
+            session.add(db_user)
+            session.flush()
+        
+        payment = Payment(
+            transaction_id=transaction_id,
+            user_id=db_user.id,
+            amount=amount,
+            status=PaymentStatus.PENDING,
+            receipt_file_id=file_id,
+            receipt_type="photo"
+        )
+        session.add(payment)
+        session.commit()
+    
+    # ارسال به ادمین
+    if ADMIN_IDS:
+        await bot.send_photo(
+            ADMIN_IDS,
+            file_id,
+            caption=f"📸 رسید جدید\n"
+                    f"👤 @{user.username or 'ندارد'}\n"
+                    f"💰 {amount:,} تومان\n"
+                    f"🆔 {transaction_id}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton("✅ تایید", callback_data=f"confirm_{payment.id}"),
+                 InlineKeyboardButton("❌ رد", callback_data=f"reject_{payment.id}")]
+            ])
+        )
+    
+    await state.clear()
+    await message.answer("✅ رسید دریافت شد. در حال بررسی...", reply_markup=main_menu())
+
+# ============================================================
+# تایید و رد پرداخت توسط ادمین
+# ============================================================
+
+@dp.callback_query(F.data.startswith("confirm_"))
+async def confirm_payment(callback: CallbackQuery):
+    payment_id = int(callback.data.replace("confirm_", ""))
+    
+    with get_db() as session:
+        payment = session.query(Payment).filter_by(id=payment_id).first()
+        if not payment:
+            await callback.answer("پرداخت یافت نشد!")
+            return
+        
+        if payment.status != PaymentStatus.PENDING:
+            await callback.answer("این پرداخت قبلاً پردازش شده!")
+            return
+        
+        user = session.query(User).filter_by(id=payment.user_id).first()
+        if not user:
+            await callback.answer("کاربر یافت نشد!")
+            return
+        
+        # افزایش موجودی
+        balance_before = user.balance
+        user.balance += payment.amount
+        user.successful_transactions += 1
+        
+        payment.status = PaymentStatus.SUCCESS
+        payment.confirmed_at = func.now()
+        payment.admin_id = callback.from_user.id
+        
+        wallet_tx = WalletTransaction(
+            user_id=user.id,
+            type=TransactionType.DEPOSIT,
+            amount=payment.amount,
+            balance_before=balance_before,
+            balance_after=user.balance,
+            reference_id=payment.transaction_id,
+            description=f"شارژ حساب"
+        )
+        session.add(wallet_tx)
+        session.commit()
+        
+        # پیام به کاربر
+        try:
+            await bot.send_message(
+                user.telegram_id,
+                f"✅ پرداخت تایید شد!\n💰 {payment.amount:,.0f} تومان اضافه شد.\n💳 موجودی: {user.balance:,.0f} تومان"
+            )
+        except:
+            pass
+        
+        await callback.message.edit_text(
+            f"✅ پرداخت تایید شد!\n"
+            f"👤 @{user.username or 'ندارد'}\n"
+            f"💰 {payment.amount:,.0f} تومان"
+        )
+        await callback.answer("✅ تایید شد!")
+
+@dp.callback_query(F.data.startswith("reject_"))
+async def reject_payment(callback: CallbackQuery):
+    payment_id = int(callback.data.replace("reject_", ""))
+    
+    with get_db() as session:
+        payment = session.query(Payment).filter_by(id=payment_id).first()
+        if not payment:
+            await callback.answer("پرداخت یافت نشد!")
+            return
+        
+        if payment.status != PaymentStatus.PENDING:
+            await callback.answer("این پرداخت قبلاً پردازش شده!")
+            return
+        
+        user = session.query(User).filter_by(id=payment.user_id).first()
+        payment.status = PaymentStatus.REJECTED
+        payment.rejected_at = func.now()
+        payment.admin_id = callback.from_user.id
+        session.commit()
+        
+        try:
+            await bot.send_message(
+                user.telegram_id,
+                f"❌ پرداخت شما رد شد.\n💰 مبلغ: {payment.amount:,.0f} تومان"
+            )
+        except:
+            pass
+        
+        await callback.message.edit_text(
+            f"❌ پرداخت رد شد!\n"
+            f"👤 @{user.username or 'ندارد'}\n"
+            f"💰 {payment.amount:,.0f} تومان"
+        )
+        await callback.answer("❌ رد شد!")
+
+@dp.callback_query(F.data == "cancel_payment")
+async def cancel_payment(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("❌ لغو شد.", reply_markup=main_menu())
     await callback.answer()
 
 # ============================================================
-# ثبت روت
+# مقداردهی اولیه محصولات
 # ============================================================
 
-def register_admin_handlers(dp):
-    dp.include_router(router)
+with get_db() as session:
+    default_products = [
+        ("vip_single", "VPN VIP تک کاربره", 250),
+        ("vip_dual", "VPN VIP دو کاربره", 450),
+        ("normal_single", "VPN معمولی تک کاربره", 190),
+        ("normal_dual", "VPN معمولی دو کاربره", 270)
+    ]
+    for product_type, name, price in default_products:
+        existing = session.query(Product).filter_by(product_type=product_type).first()
+        if not existing:
+            session.add(Product(name=name, product_type=product_type, price=price))
+    session.commit()
+
+# ============================================================
+# اجرای ربات
+# ============================================================
+
+async def main():
+    print("=" * 50)
+    print("✅ Bot is ready! 🤖")
+    print("=" * 50)
+    sys.stdout.flush()
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        traceback.print_exc()
+        sys.exit(1)
