@@ -18,14 +18,18 @@ try:
     print("✅ Environment variables loaded")
     
     # ============================================
-    # ⚠️ توکن را اینجا قرار دهید (خط 23)
+    # 🔴 توکن را در این قسمت قرار دهید (فقط یک خط)
     # ============================================
-    # روش 1: از Environment Variables بخوان (توصیه شده برای Render)
+    
+    # گزینه ۱: استفاده از Environment Variables (توصیه شده)
     TOKEN = os.getenv('BOT_TOKEN')
     
-    # روش 2: اگر نمی‌خواهید از Environment Variables استفاده کنید،
-    # این خط را از حالت کامنت خارج کنید و توکن را جایگزین کنید:
-    TOKEN = "8862607230:AAGIJxaBzKmSefeU7u4pldyvGnFGmHM2YMo"
+    # گزینه ۲: قرار دادن مستقیم توکن (اگر گزینه ۱ کار نکرد)
+    # این خط را از حالت کامنت خارج کنید و توکن جدید را جایگزین کنید
+    # و خط بالایی را کامنت کنید
+    # TOKEN = "توکن_جدید_خود_را_اینجا_بگذارید"
+    
+    # ============================================
     
     if not TOKEN:
         print("❌ BOT_TOKEN not found in environment!")
@@ -34,7 +38,7 @@ try:
         sys.exit(1)
     print("✅ BOT_TOKEN found")
     
-    # ایمپورت aiogram
+    # ایمپورت aiogram - درست نوشته شده
     from aiogram import Bot, Dispatcher, types
     from aiogram.filters import Command
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
