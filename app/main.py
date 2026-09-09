@@ -531,7 +531,7 @@ async def process_amount(message: types.Message, state: FSMContext):
         await message.answer("❌ فقط عدد وارد کنید.")
 
 # ============================================================
-# دریافت رسید
+# دریافت رسید (اصلاح شده با رفع خطای DetachedInstanceError)
 # ============================================================
 
 @dp.callback_query(lambda c: c.data == "send_receipt")
@@ -547,6 +547,7 @@ async def process_receipt(message: types.Message, state: FSMContext):
     file_id = message.photo[-1].file_id
     transaction_id = f"PAY-{uuid.uuid4().hex[:8].upper()}"
     
+    # ======== همه کارهای دیتابیس داخل این بلاک ========
     with get_db() as session:
         db_user = session.query(User).filter_by(telegram_id=user.id).first()
         if not db_user:
@@ -564,35 +565,37 @@ async def process_receipt(message: types.Message, state: FSMContext):
         )
         session.add(payment)
         session.commit()
+        
+        # ======== ارسال به ادمین ========
+        if ADMIN_IDS:
+            await bot.send_photo(
+                ADMIN_IDS,
+                file_id,
+                caption=f"📸 رسید جدید\n"
+                        f"👤 @{user.username or 'ندارد'}\n"
+                        f"💰 {amount:,} تومان\n"
+                        f"🆔 {transaction_id}",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="✅ تایید", callback_data=f"confirm_{payment.id}"),
+                        InlineKeyboardButton(text="❌ رد", callback_data=f"reject_{payment.id}")
+                    ]
+                ])
+            )
     
-    # ارسال به ادمین
-    if ADMIN_IDS:
-        await bot.send_photo(
-            ADMIN_IDS,
-            file_id,
-            caption=f"📸 رسید جدید\n"
-                    f"👤 @{user.username or 'ندارد'}\n"
-                    f"💰 {amount:,} تومان\n"
-                    f"🆔 {transaction_id}",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="✅ تایید", callback_data=f"confirm_{payment.id}"),
-                    InlineKeyboardButton(text="❌ رد", callback_data=f"reject_{payment.id}")
-                ]
-            ])
-        )
-    
+    # ======== خارج از بلاک with، سشن بسته شده ========
     await state.clear()
     await message.answer("✅ رسید دریافت شد. در حال بررسی...", reply_markup=main_menu())
 
 # ============================================================
-# تایید و رد پرداخت توسط ادمین
+# تایید و رد پرداخت توسط ادمین (اصلاح شده با رفع خطای DetachedInstanceError)
 # ============================================================
 
 @dp.callback_query(lambda c: c.data.startswith("confirm_"))
 async def confirm_payment(callback: types.CallbackQuery):
     payment_id = int(callback.data.replace("confirm_", ""))
     
+    # ======== همه کارهای دیتابیس داخل این بلاک ========
     with get_db() as session:
         payment = session.query(Payment).filter_by(id=payment_id).first()
         if not payment:
@@ -629,7 +632,7 @@ async def confirm_payment(callback: types.CallbackQuery):
         session.add(wallet_tx)
         session.commit()
         
-        # پیام به کاربر
+        # ======== ارسال پیام به کاربر ========
         try:
             await bot.send_message(
                 user.telegram_id,
@@ -638,6 +641,7 @@ async def confirm_payment(callback: types.CallbackQuery):
         except:
             pass
         
+        # ======== به‌روزرسانی پیام ادمین ========
         await callback.message.edit_text(
             f"✅ پرداخت تایید شد!\n"
             f"👤 @{user.username or 'ندارد'}\n"
@@ -649,6 +653,7 @@ async def confirm_payment(callback: types.CallbackQuery):
 async def reject_payment(callback: types.CallbackQuery):
     payment_id = int(callback.data.replace("reject_", ""))
     
+    # ======== همه کارهای دیتابیس داخل این بلاک ========
     with get_db() as session:
         payment = session.query(Payment).filter_by(id=payment_id).first()
         if not payment:
@@ -660,11 +665,13 @@ async def reject_payment(callback: types.CallbackQuery):
             return
         
         user = session.query(User).filter_by(id=payment.user_id).first()
+        
         payment.status = PaymentStatus.REJECTED
         payment.rejected_at = func.now()
         payment.admin_id = callback.from_user.id
         session.commit()
         
+        # ======== ارسال پیام به کاربر ========
         try:
             await bot.send_message(
                 user.telegram_id,
@@ -673,6 +680,7 @@ async def reject_payment(callback: types.CallbackQuery):
         except:
             pass
         
+        # ======== به‌روزرسانی پیام ادمین ========
         await callback.message.edit_text(
             f"❌ پرداخت رد شد!\n"
             f"👤 @{user.username or 'ندارد'}\n"
