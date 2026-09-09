@@ -96,10 +96,3 @@ def get_back_to_cards_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="↩️ بازگشت", callback_data="admin_cards")]
     ])
-
-def get_edit_card_keyboard():
-    """کیبورد ویرایش کارت"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ فقط تغییر نام", callback_data="edit_card_holder_only")],
-        [InlineKeyboardButton(text="↩️ بازگشت", callback_data="admin_cards")]
-    ])
