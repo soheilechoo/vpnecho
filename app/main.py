@@ -22,9 +22,6 @@ try:
     # ============================================
     TOKEN = os.getenv('BOT_TOKEN')
     
-    # اگر می‌خواهید توکن را مستقیم قرار دهید، این خط را از حالت کامنت خارج کنید:
-    # TOKEN = "8862607230:AA...توکن_جدید_شما..."
-    
     if not TOKEN:
         print("❌ BOT_TOKEN not found in environment!")
         print("💡 Please set BOT_TOKEN in Render Environment Variables")
@@ -33,7 +30,7 @@ try:
     
     # ============ ایمپورت‌های اصلی ============
     from aiogram import Bot, Dispatcher, types
-    from aiogram.filters import Command, F  # <--- این خط اضافه شد
+    from aiogram.filters import Command
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     from aiogram.enums import ParseMode
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -138,7 +135,6 @@ try:
     # ============ تابع کمکی برای ویرایش ایمن پیام ============
     
     async def safe_edit_text(message, text, reply_markup=None):
-        """ویرایش ایمن پیام با مدیریت خطا"""
         try:
             await message.edit_text(text, reply_markup=reply_markup)
         except TelegramBadRequest as e:
@@ -468,9 +464,9 @@ try:
         except ValueError:
             await message.answer("❌ لطفاً فقط عدد وارد کنید.\nمبلغ را به تومان وارد کنید (فقط عدد):")
     
-    # ============ دریافت رسید (FSM) ============
+    # ============ دریافت رسید (FSM) - اصلاح شده بدون F ============
     
-    @dp.message(WalletState.sending_receipt, F.photo)
+    @dp.message(WalletState.sending_receipt, lambda message: message.photo is not None)
     async def process_receipt_photo(message: types.Message, state: FSMContext):
         data = await state.get_data()
         amount = data.get('amount', 0)
@@ -487,7 +483,7 @@ try:
             reply_markup=get_main_menu_keyboard()
         )
     
-    @dp.message(WalletState.sending_receipt, F.document)
+    @dp.message(WalletState.sending_receipt, lambda message: message.document is not None)
     async def process_receipt_document(message: types.Message, state: FSMContext):
         data = await state.get_data()
         amount = data.get('amount', 0)
