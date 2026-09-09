@@ -13,3 +13,7 @@ class AdminState(StatesGroup):
     # مدیریت کاربران
     waiting_for_user_search = State()
     waiting_for_block_reason = State()
+    
+    # ویرایش کارت
+    waiting_for_card_number_edit = State()
+    waiting_for_card_holder_edit = State()
