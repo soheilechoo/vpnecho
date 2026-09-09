@@ -17,11 +17,20 @@ try:
     load_dotenv()
     print("✅ Environment variables loaded")
     
-    # بررسی توکن
-    TOKEN = os.getenv('8862607230:AAGIJxaBzKmSefeU7u4pldyvGnFGmHM2YMo')
+    # ============================================
+    # ⚠️ توکن را اینجا قرار دهید (خط 23)
+    # ============================================
+    # روش 1: از Environment Variables بخوان (توصیه شده برای Render)
+    TOKEN = os.getenv('BOT_TOKEN')
+    
+    # روش 2: اگر نمی‌خواهید از Environment Variables استفاده کنید،
+    # این خط را از حالت کامنت خارج کنید و توکن را جایگزین کنید:
+    TOKEN = "8862607230:AAGIJxaBzKmSefeU7u4pldyvGnFGmHM2YMo"
+    
     if not TOKEN:
         print("❌ BOT_TOKEN not found in environment!")
         print("💡 Please set BOT_TOKEN in Render Environment Variables")
+        print("💡 Or uncomment line 22 and add your token there")
         sys.exit(1)
     print("✅ BOT_TOKEN found")
     
@@ -32,7 +41,7 @@ try:
     from aiogram.enums import ParseMode
     print("✅ aiogram imported")
     
-    # ایجاد ربات - نسخه اصلاح شده
+    # ایجاد ربات
     bot = Bot(
         token=TOKEN,
         parse_mode=ParseMode.HTML
